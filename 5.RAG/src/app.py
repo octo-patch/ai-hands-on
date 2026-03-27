@@ -13,7 +13,15 @@ import numpy as np
 import faiss
 from sentence_transformers import SentenceTransformer
 from retrieve_context import get_relevant_chunks, rerank_by_mnli
-from generate_answer import answer_with_context, summarize_document, summarize_by_sections
+from generate_answer import (
+    answer_with_context,
+    summarize_document,
+    summarize_by_sections,
+    cloud_answer_with_context,
+    cloud_summarize_document,
+    cloud_summarize_by_sections,
+)
+from llm_provider import PROVIDER_PRESETS, detect_provider, get_llm_config
 
 # Page configuration
 st.set_page_config(
@@ -373,17 +381,48 @@ with st.sidebar:
     st.markdown("""
     - **Semantic Search**: sentence-transformers (all-MiniLM-L6-v2)
     - **Vector Database**: FAISS (Facebook AI Similarity Search)
-    - **Language Model**: BART (generative)
+    - **Language Model**: BART (local) or Cloud LLM
     - **Reranker (optional)**: BART MNLI (facebook/bart-large-mnli)
     - **Framework**: Streamlit
     """)
+
+    st.markdown("---")
+    st.markdown("### Answer Generation")
+    # Build provider options
+    _provider_options = ["Local (BART)"]
+    _provider_map = {"Local (BART)": None}
+    for _pname, _preset in PROVIDER_PRESETS.items():
+        _label = f"{_preset['display_name']} ({_preset['default_model']})"
+        _provider_options.append(_label)
+        _provider_map[_label] = _pname
+    # Pre-select cloud provider when an API key is detected
+    _detected = detect_provider()
+    _default_idx = 0
+    if _detected:
+        for _i, _label in enumerate(_provider_options):
+            if _provider_map.get(_label) == _detected:
+                _default_idx = _i
+                break
+    selected_provider_label = st.selectbox(
+        "LLM Provider",
+        _provider_options,
+        index=_default_idx,
+        help="Choose the model used for answer generation and summarization.",
+    )
+    _selected_provider = _provider_map[selected_provider_label]
+    llm_config = get_llm_config(provider=_selected_provider) if _selected_provider else None
+    if _selected_provider and llm_config is None:
+        st.warning(
+            f"Set **{PROVIDER_PRESETS[_selected_provider]['env_key']}** "
+            "environment variable to use this provider."
+        )
     
     st.markdown("---")
     st.markdown("### How It Works")
     st.markdown("""
     1. **Document Processing**: Security reports are chunked and embedded
     2. **Semantic Retrieval**: Your query finds relevant document chunks
-    3. **Answer Generation**: BART generates contextual answers
+    3. **Answer Generation**: Local BART or cloud LLM generates contextual answers
     4. **Source Attribution**: View exact sources used
     """)
     
@@ -404,7 +443,8 @@ st.markdown('<p class="sub-header">Ask questions or generate summaries of your s
 # Metrics row
 col1, col2, col3, col4 = st.columns(4)
 with col1:
-    st.metric("Model", "BART (Generative)", "Transformer-based")
+    _model_label = llm_config.model if llm_config else "BART (Local)"
+    st.metric("Model", _model_label, "Transformer-based")
 with col2:
     st.metric("Search Method", "Semantic + optional rerank", "Vector similarity")
 with col3:
@@ -549,7 +589,7 @@ if action_button and (query or mode == "Document Summarization"):
                 context = "\n\n".join([c[0] for c in chunks[:5]])
             
             try:
-                answer = answer_with_context(context, query)
+                answer = cloud_answer_with_context(context, query, llm_config)
             except Exception as e:
                 answer = None
                 st.error(f"Error generating answer: {e}")
@@ -588,9 +628,9 @@ if action_button and (query or mode == "Document Summarization"):
                 
                 try:
                     if summary_type == "Full document summary":
-                        summary_result = summarize_document(all_text_chunks, max_length)
+                        summary_result = cloud_summarize_document(all_text_chunks, max_length, llm_config)
                     else:
-                        summary_result = summarize_by_sections(all_text_chunks, section_size=3, max_summary_length=max_length//2)
+                        summary_result = cloud_summarize_by_sections(all_text_chunks, section_size=3, max_summary_length=max_length//2, llm_config=llm_config)
                 except Exception as e:
                     summary_result = None
                     st.error(f"Error generating summary: {e}")
@@ -664,5 +704,5 @@ else:
 
 # Footer
 st.markdown("---")
-st.caption("RAG-based Cybersecurity Analyzer | Q&A + Summarization | Powered by BART + FAISS + Sentence Transformers | Upload PDFs for instant analysis")
+st.caption("RAG-based Cybersecurity Analyzer | Q&A + Summarization | Powered by BART / MiniMax / OpenAI + FAISS + Sentence Transformers | Upload PDFs for instant analysis")
 st.caption("Build by Ramakrushna")
