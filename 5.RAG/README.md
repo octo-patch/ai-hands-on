@@ -1,6 +1,6 @@
 # CyberSec RAG Analyzer
 
-CyberSec RAG Analyzer is a Retrieval-Augmented Generation (RAG) application for querying cybersecurity documents. It combines semantic search (FAISS + Sentence Transformers) with a generative model (BART) to produce grounded answers with source attribution. The app includes a web UI built with Streamlit and supports uploading PDFs for instant analysis.
+CyberSec RAG Analyzer is a Retrieval-Augmented Generation (RAG) application for querying cybersecurity documents. It combines semantic search (FAISS + Sentence Transformers) with a generative model (BART locally, or a cloud LLM such as [MiniMax](https://www.minimax.io/) or OpenAI) to produce grounded answers with source attribution. The app includes a web UI built with Streamlit and supports uploading PDFs for instant analysis.
 
 ---
 
@@ -9,8 +9,9 @@ CyberSec RAG Analyzer is a Retrieval-Augmented Generation (RAG) application for 
 - **PDF upload in browser**: Upload one or more PDFs and analyze them immediately.
 - **Dual-source search**: Query both pre-indexed documents and newly uploaded PDFs.
 - **Semantic retrieval**: FAISS vector search over SentenceTransformer embeddings.
-- **Grounded answers**: BART generates answers using retrieved context, with transparent source snippets.
-- **Local processing**: No external API required; models are loaded locally.
+- **Grounded answers**: BART or a cloud LLM generates answers using retrieved context, with transparent source snippets.
+- **Multi-provider LLM**: Choose between local BART, [MiniMax](https://www.minimax.io/) (M2.7), or OpenAI for answer generation — auto-detected from environment variables.
+- **Local processing**: Runs fully offline with BART, or opt into a cloud LLM for richer answers.
 - **Robust error handling**: Handles missing indices, large files, scanned PDFs, and model-loading edge cases.
 
 ---
@@ -21,7 +22,8 @@ CyberSec RAG Analyzer is a Retrieval-Augmented Generation (RAG) application for 
 - **Text extraction**: `src/extract_text.py` (PyMuPDF)
 - **Embedding/index build**: `src/create_embeddings.py` (Sentence Transformers + FAISS)
 - **Retrieval**: `src/retrieve_context.py` (loads FAISS index and searches)
-- **Generation**: `src/generate_answer.py` (BART for conditional generation)
+- **Generation**: `src/generate_answer.py` (BART for local generation; cloud LLM wrappers)
+- **LLM Provider**: `src/llm_provider.py` (MiniMax / OpenAI / any OpenAI-compatible API)
 
 Data flow:
 1. Text is extracted from PDFs and chunked into passages.
@@ -45,7 +47,8 @@ RAG-Cyber-analyzer/
 │   ├── extract_text.py       # PDF → text converter (offline pipeline)
 │   ├── create_embeddings.py  # build FAISS from processed_texts (offline)
 │   ├── retrieve_context.py   # retrieval over FAISS (pre-indexed)
-│   └── generate_answer.py    # answer generation with BART
+│   ├── generate_answer.py    # answer generation with BART or cloud LLM
+│   └── llm_provider.py       # cloud LLM provider (MiniMax / OpenAI)
 ├── requirements.txt
 └── README.md
 ```
@@ -70,8 +73,30 @@ pip install -r requirements.txt
 ```
 If you do not use the requirements file, install individually:
 ```bash
-pip install streamlit transformers sentence-transformers torch numpy faiss-cpu PyMuPDF
+pip install streamlit transformers sentence-transformers torch numpy faiss-cpu PyMuPDF openai
 ```
+
+### 3) (Optional) Configure a cloud LLM provider
+
+Set one of the following environment variables to enable cloud-based answer
+generation instead of local BART:
+
+| Provider | Environment Variable | Default Model |
+|----------|---------------------|---------------|
+| [MiniMax](https://www.minimax.io/) | `MINIMAX_API_KEY` | MiniMax-M2.7 |
+| OpenAI | `OPENAI_API_KEY` | gpt-4o-mini |
+
+```bash
+# Example: use MiniMax
+export MINIMAX_API_KEY="your-api-key"
+
+# Example: use OpenAI
+export OPENAI_API_KEY="sk-..."
+```
+
+When an API key is detected the sidebar will default to the corresponding
+cloud provider.  You can always switch back to **Local (BART)** from the
+sidebar dropdown.
 
 > Note for Apple Silicon (arm64): `faiss-cpu` wheels are available. The `torch` CPU wheel is used by default.
 
@@ -139,6 +164,7 @@ torch>=2.0.0
 numpy>=1.24.0
 faiss-cpu>=1.7.4
 PyMuPDF>=1.23.0
+openai>=1.0.0
 ```
 2. Push to your Git repository.
 3. Create a new Streamlit Cloud app pointed at this repo, and set the entry point to `src/app.py`.
@@ -164,8 +190,9 @@ PyMuPDF>=1.23.0
 
 ## Security and Privacy
 
-- All document processing and inference occur locally in your environment or in your Streamlit Cloud instance.
-- No external APIs are called for embedding or generation.
+- Embedding and retrieval always run locally.
+- Answer generation runs locally (BART) by default. When a cloud LLM is
+  configured, prompts and retrieved context are sent to the provider's API.
 - Treat uploaded files as sensitive. Do not commit private documents to the repository.
 
 ---
