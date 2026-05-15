@@ -1,6 +1,6 @@
 # CyberSec RAG Analyzer
 
-CyberSec RAG Analyzer is a Retrieval-Augmented Generation (RAG) application for querying cybersecurity documents. It combines semantic search (FAISS + Sentence Transformers) with a generative model (BART locally, or a cloud LLM such as [MiniMax](https://www.minimax.io/) or OpenAI) to produce grounded answers with source attribution. The app includes a web UI built with Streamlit and supports uploading PDFs for instant analysis.
+CyberSec RAG Analyzer is a Retrieval-Augmented Generation (RAG) application for querying cybersecurity documents. It combines semantic search (FAISS + Sentence Transformers) with a generative model (BART locally, or a cloud LLM such as [Atlas Cloud](https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=ai-hands-on), [MiniMax](https://www.minimax.io/), or OpenAI) to produce grounded answers with source attribution. The app includes a web UI built with Streamlit and supports uploading PDFs for instant analysis.
 
 ---
 
@@ -10,7 +10,7 @@ CyberSec RAG Analyzer is a Retrieval-Augmented Generation (RAG) application for 
 - **Dual-source search**: Query both pre-indexed documents and newly uploaded PDFs.
 - **Semantic retrieval**: FAISS vector search over SentenceTransformer embeddings.
 - **Grounded answers**: BART or a cloud LLM generates answers using retrieved context, with transparent source snippets.
-- **Multi-provider LLM**: Choose between local BART, [MiniMax](https://www.minimax.io/) (M2.7), or OpenAI for answer generation — auto-detected from environment variables.
+- **Multi-provider LLM**: Choose between local BART, [Atlas Cloud](https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=ai-hands-on) (`deepseek-ai/DeepSeek-V3-0324` by default), [MiniMax](https://www.minimax.io/) (M2.7), or OpenAI for answer generation — auto-detected from environment variables.
 - **Local processing**: Runs fully offline with BART, or opt into a cloud LLM for richer answers.
 - **Robust error handling**: Handles missing indices, large files, scanned PDFs, and model-loading edge cases.
 
@@ -23,7 +23,7 @@ CyberSec RAG Analyzer is a Retrieval-Augmented Generation (RAG) application for 
 - **Embedding/index build**: `src/create_embeddings.py` (Sentence Transformers + FAISS)
 - **Retrieval**: `src/retrieve_context.py` (loads FAISS index and searches)
 - **Generation**: `src/generate_answer.py` (BART for local generation; cloud LLM wrappers)
-- **LLM Provider**: `src/llm_provider.py` (MiniMax / OpenAI / any OpenAI-compatible API)
+- **LLM Provider**: `src/llm_provider.py` (Atlas Cloud / MiniMax / OpenAI / any OpenAI-compatible API)
 
 Data flow:
 1. Text is extracted from PDFs and chunked into passages.
@@ -48,7 +48,7 @@ RAG-Cyber-analyzer/
 │   ├── create_embeddings.py  # build FAISS from processed_texts (offline)
 │   ├── retrieve_context.py   # retrieval over FAISS (pre-indexed)
 │   ├── generate_answer.py    # answer generation with BART or cloud LLM
-│   └── llm_provider.py       # cloud LLM provider (MiniMax / OpenAI)
+│   └── llm_provider.py       # cloud LLM provider (Atlas Cloud / MiniMax / OpenAI)
 ├── requirements.txt
 └── README.md
 ```
@@ -83,10 +83,15 @@ generation instead of local BART:
 
 | Provider | Environment Variable | Default Model |
 |----------|---------------------|---------------|
+| [Atlas Cloud](https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=ai-hands-on) | `ATLAS_CLOUD_API_KEY` | deepseek-ai/DeepSeek-V3-0324 |
 | [MiniMax](https://www.minimax.io/) | `MINIMAX_API_KEY` | MiniMax-M2.7 |
 | OpenAI | `OPENAI_API_KEY` | gpt-4o-mini |
 
 ```bash
+# Example: use Atlas Cloud
+export ATLAS_CLOUD_API_KEY="your-api-key"
+export ATLAS_CLOUD_MODEL="deepseek-ai/DeepSeek-V3-0324"  # optional override
+
 # Example: use MiniMax
 export MINIMAX_API_KEY="your-api-key"
 
@@ -94,8 +99,13 @@ export MINIMAX_API_KEY="your-api-key"
 export OPENAI_API_KEY="sk-..."
 ```
 
+Atlas Cloud uses the OpenAI-compatible base URL `https://api.atlascloud.ai/v1`.
+The bundled default model is `deepseek-ai/DeepSeek-V3-0324`, and you can
+override it with `ATLAS_CLOUD_MODEL` when your Atlas account exposes a
+different preferred model ID.
+
 When an API key is detected the sidebar will default to the corresponding
-cloud provider.  You can always switch back to **Local (BART)** from the
+cloud provider. You can always switch back to **Local (BART)** from the
 sidebar dropdown.
 
 > Note for Apple Silicon (arm64): `faiss-cpu` wheels are available. The `torch` CPU wheel is used by default.

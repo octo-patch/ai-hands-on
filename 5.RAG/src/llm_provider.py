@@ -1,8 +1,8 @@
 """Cloud LLM provider for RAG answer generation.
 
-Supports MiniMax, OpenAI, and any OpenAI-compatible API as an alternative
-to local BART generation. Provider is auto-detected from environment
-variables or can be explicitly configured.
+Supports Atlas Cloud, MiniMax, OpenAI, and any OpenAI-compatible API as an
+alternative to local BART generation. Provider is auto-detected from
+environment variables or can be explicitly configured.
 """
 
 import os
@@ -10,6 +10,13 @@ from dataclasses import dataclass
 
 # Provider presets: name -> (base_url, default_model, env_key)
 PROVIDER_PRESETS = {
+    "atlas_cloud": {
+        "base_url": "https://api.atlascloud.ai/v1",
+        "default_model": "deepseek-ai/DeepSeek-V3-0324",
+        "env_key": "ATLAS_CLOUD_API_KEY",
+        "model_env_key": "ATLAS_CLOUD_MODEL",
+        "display_name": "Atlas Cloud",
+    },
     "minimax": {
         "base_url": "https://api.minimax.io/v1",
         "default_model": "MiniMax-M2.7",
@@ -24,8 +31,8 @@ PROVIDER_PRESETS = {
     },
 }
 
-# Auto-detection order: try MiniMax first, then OpenAI
-_DETECTION_ORDER = ["minimax", "openai"]
+# Auto-detection order: prefer Atlas Cloud when configured locally.
+_DETECTION_ORDER = ["atlas_cloud", "minimax", "openai"]
 
 
 @dataclass
@@ -64,8 +71,9 @@ def get_llm_config(
     Parameters
     ----------
     provider : str, optional
-        Provider name (``"minimax"`` or ``"openai"``).  When *None*, the
-        provider is auto-detected from environment variables.
+        Provider name (for example ``"atlas_cloud"``, ``"minimax"``, or
+        ``"openai"``). When *None*, the provider is auto-detected from
+        environment variables.
     model : str, optional
         Model identifier.  Defaults to the provider preset.
     temperature : float
@@ -91,7 +99,9 @@ def get_llm_config(
     if not api_key:
         return None
 
-    resolved_model = model or preset["default_model"]
+    env_model = preset.get("model_env_key")
+    env_model_value = os.environ.get(env_model, "") if env_model else ""
+    resolved_model = model or env_model_value or preset["default_model"]
 
     # MiniMax temperature must be in (0, 1]
     if provider == "minimax":
@@ -144,3 +154,30 @@ def chat_completion(config, messages):
 
     text = response.choices[0].message.content or ""
     return _strip_think_tags(text)
+
+
+def chat_completion_stream(config, messages):
+    """Send a streaming chat completion request and collect streamed text."""
+    from openai import OpenAI
+
+    client = OpenAI(api_key=config.api_key, base_url=config.base_url)
+
+    stream = client.chat.completions.create(
+        model=config.model,
+        messages=messages,
+        temperature=config.temperature,
+        max_tokens=config.max_tokens,
+        stream=True,
+    )
+
+    chunks = []
+    for event in stream:
+        if not getattr(event, "choices", None):
+            continue
+
+        delta = getattr(event.choices[0], "delta", None)
+        content = getattr(delta, "content", None)
+        if content:
+            chunks.append(content)
+
+    return _strip_think_tags("".join(chunks))
